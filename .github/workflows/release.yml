@@ -20,20 +20,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller pytest
+      - name: Python compile check
+        run: python -m py_compile cd_background_studio.py compositor.py lobby_regions.py live_overlay.py
       - name: Unit tests
         run: python -m pytest -q
       - name: Build portable EXE
         run: pyinstaller --noconfirm --clean --onefile --windowed --name CD-Background-Studio cd_background_studio.py
-      - name: Attach executable to v0.1.0 release
+      - name: Attach executable to v0.2.0 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.1.0 >/dev/null 2>&1; then
-            gh release upload v0.1.0 dist/CD-Background-Studio.exe --clobber
+          if gh release view v0.2.0 >/dev/null 2>&1; then
+            gh release upload v0.2.0 dist/CD-Background-Studio.exe --clobber
           else
-            gh release create v0.1.0 dist/CD-Background-Studio.exe \
+            gh release create v0.2.0 dist/CD-Background-Studio.exe \
               --target "${GITHUB_SHA}" \
-              --title 'CD Background Studio v0.1.0 — Offline Wallpaper Editor' \
-              --notes 'Import 4K wallpapers, protect UI/player/platform in a screenshot, preview and export images. This version does NOT alter or bypass Creative Destruction. In-game integration requires approved asset support.'
+              --title 'CD Background Studio v0.2.0 — Offline Wallpaper Editor' \
+              --notes 'Apply imported 4K wallpapers to the visible lobby background with a click-through Windows overlay. Preserves masked player/UI/platform. 16:9, borderless/windowed. Not a true 3D asset patch, not an anti-cheat bypass. Windows overlay requires testing with your game client.'
           fi
