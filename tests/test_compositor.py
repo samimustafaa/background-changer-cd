@@ -31,3 +31,23 @@ def test_default_mask_dimensions():
     assert mask.getpixel((350, 200)) == 0
     assert mask.getpixel((850, 290)) == 255
     assert mask.getpixel((600, 790)) == 255
+
+
+def test_blue_region_preserves_player_ui_platform():
+    from lobby_regions import live_wallpaper_mask
+    mask = live_wallpaper_mask((1650, 927))
+    assert mask.getpixel((360, 210)) == 255  # sky backdrop
+    assert mask.getpixel((1485, 260)) == 255  # right sky backdrop
+    assert mask.getpixel((140, 210)) == 0     # sidebar controls
+    assert mask.getpixel((860, 300)) == 0     # character
+    assert mask.getpixel((860, 20)) == 0      # top HUD
+    assert mask.getpixel((700, 780)) == 0     # platform / floor
+
+
+def test_chroma_frame_keeps_sky_only():
+    from lobby_regions import chroma_frame
+    wallpaper = Image.new('RGB', (3840, 2160), (22, 80, 130))
+    preview = chroma_frame(wallpaper, (1650, 927))
+    assert preview.getpixel((360, 210)) == (22, 80, 130)
+    assert preview.getpixel((860, 300)) == (1, 2, 3)
+    assert preview.getpixel((140, 210)) == (1, 2, 3)
