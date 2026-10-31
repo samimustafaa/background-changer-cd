@@ -36,6 +36,9 @@ jobs:
           else
             gh release create v0.2.0 dist/CD-Background-Studio.exe \
               --target "${GITHUB_SHA}" \
-              --title 'CD Background Studio v0.2.0 — Offline Wallpaper Editor' \
+              --title 'CD Background Studio v0.2.0 — Live Lobby Overlay' \
               --notes 'Apply imported 4K wallpapers to the visible lobby background with a click-through Windows overlay. Preserves masked player/UI/platform. 16:9, borderless/windowed. Not a true 3D asset patch, not an anti-cheat bypass. Windows overlay requires testing with your game client.'
           fi
+          gh release edit v0.2.0 \
+            --title 'CD Background Studio v0.2.0 — Live Lobby Overlay' \
+            --notes 'Apply imported 4K wallpapers to the visible Creative Destruction lobby using a click-through Windows overlay. Preserves masked player/UI/platform, works in 16:9 borderless/windowed mode. The wallpaper is NOT patched into the 3D scene. No anti-cheat bypass. Runtime compatibility with your game client is not verified.'
