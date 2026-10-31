@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import ctypes
 import os
+import time
 import tkinter as tk
 from ctypes import wintypes
 
 import psutil
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageGrab
 from lobby_regions import chroma_frame
 
 CHROMA = '#010203'
@@ -53,6 +54,24 @@ class LiveLobbyOverlay:
         self.root = root
         self.status_callback = status_callback or (lambda text: None)
         self.user32 = ctypes.windll.user32
+        # Explicit signatures: HWND is pointer-sized on 64-bit Windows.
+        self.user32.GetParent.argtypes = [wintypes.HWND]
+        self.user32.GetParent.restype = wintypes.HWND
+        self.user32.GetForegroundWindow.argtypes = []
+        self.user32.GetForegroundWindow.restype = wintypes.HWND
+        self.user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        self.user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        self.user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        self.user32.GetClientRect.restype = wintypes.BOOL
+        self.user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+        self.user32.ClientToScreen.restype = wintypes.BOOL
+        self.user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+        self.user32.SetWindowLongW.argtypes = [
+            wintypes.HWND, ctypes.c_int, wintypes.LONG]
+        self.user32.SetWindowPos.argtypes = [
+            wintypes.HWND, wintypes.HWND,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
         self.window = tk.Toplevel(root)
         self.window.withdraw()
         self.window.overrideredirect(True)
@@ -68,6 +87,9 @@ class LiveLobbyOverlay:
         self.protection = None
         self.process_name = 'client.exe'
         self.last_rect = None
+        self.guard_lobby = True
+        self.last_lobby_check = 0.0
+        self.last_lobby_ok = False
         self.photo = None
         self.last_state = None
         self._scheduled = None
@@ -88,17 +110,19 @@ class LiveLobbyOverlay:
             self.status_callback(message)
 
     def arm(self, wallpaper: Image.Image, protection: Image.Image | None,
-            game_exe: str = 'client.exe') -> None:
+            game_exe: str = 'client.exe', guard_lobby: bool = True) -> None:
         name = os.path.basename(game_exe.strip()).lower()
         if not name.endswith('.exe'):
             raise ValueError('Enter a Windows executable filename, e.g. client.exe')
         self.process_name = name
+        self.guard_lobby = guard_lobby
+        self.last_lobby_check = 0
+        self.last_lobby_ok = False
         self.wallpaper = wallpaper.convert('RGB').copy()
         self.protection = protection.copy() if protection is not None else None
         self.last_rect = None
         self.armed = True
         self._status('ARMED — switch to the game lobby (windowed/borderless).')
-        self._tick()
 
     def remove(self) -> None:
         self.armed = False
@@ -158,6 +182,20 @@ class LiveLobbyOverlay:
             return None
         return pt.x, pt.y, w, h
 
+    def _lobby_start_visible(self, rect):
+        """Optional safety guard: sample only the bottom-right Start button.
+
+        If the lobby Start button is absent (e.g. gameplay), the overlay is
+        automatically hidden. This heuristic can be disabled in the editor.
+        """
+        x, y, w, h = rect
+        box = (x + int(.79*w), y + int(.89*h),
+               x + int(.96*w), y + int(.95*h))
+        sample = ImageGrab.grab(bbox=box).convert('RGB').resize((32, 12))
+        colors = list(sample.getdata())
+        yellow = sum(1 for r,g,b in colors if r > 185 and g > 135 and b < 145)
+        return yellow > len(colors) * .30
+
     def _paint_rect(self, rect):
         x, y, w, h = rect
         # PIL images are computed only on image selection / window size changes,
@@ -180,6 +218,15 @@ class LiveLobbyOverlay:
                 self._hide()
                 self._status('ARMED — waiting for focused ' + self.process_name)
                 return
+            if self.guard_lobby:
+                now = time.monotonic()
+                if now - self.last_lobby_check >= .9 or rect != self.last_rect:
+                    self.last_lobby_check = now
+                    self.last_lobby_ok = self._lobby_start_visible(rect)
+                if not self.last_lobby_ok:
+                    self._hide()
+                    self._status('ARMED — game found, waiting for lobby Start button.')
+                    return
             if rect != self.last_rect:
                 self._paint_rect(rect)
             if self.window.state() == 'withdrawn':
