@@ -1,44 +1,52 @@
-# CD Background Studio
+# CD Background Studio v0.2.0
 
-A dark-themed **offline Creative Destruction lobby wallpaper design utility** for Windows. Import a wallpaper (including 4K), import a lobby screenshot, protect the character/UI/platform with a paintable mask, preview the result, and export a 3840×2160 wallpaper pack.
+An independent Windows utility to **apply a wallpaper visually to the Creative Destruction lobby while the game is running**, using an optional, click-through on-screen overlay. It follows the **blue-marked sky/background region** in the supplied reference and cuts out the player, the UI, the platform and foreground props.
 
-> **Honest limitation:** This is a wallpaper **preview and export** tool, **not yet an in-game lobby background replacer**. No one can determine a safe, correct wallpaper asset patch from a lobby screenshot alone. It does not inject code, modify .npk archives, evade anti-cheat or alter your game files. Importing a lobby screenshot is optional.
+### Important distinction
 
-## Features
-- PNG, JPEG, BMP and WEBP wallpapers, exported at **3840×2160** with center crop to preserve aspect ratio.
-- Lobby screenshot preview with an editable, approximate starter mask to preserve visible UI/player/platform pixels.
-- Brush modes: **Keep original** / **Show wallpaper**; mouse wheel adjusts brush size.
-- Undo and reset mask; scrollable control panel.
-- Exports `wallpaper_4k.png`, `lobby_preview.png` and `protection_mask.png` (when a screenshot is provided), plus a `pack_info.json` explaining that this is an offline pack.
-- Manual GitHub Release update check. No updater silently runs executables.
-- No network access except when explicitly clicking **Check updates**.
+**Live Apply = desktop overlay, NOT a 3D asset replacement.** The overlay uses a static mask, so character animations can expose a little of the original scenery near their edges. The wallpaper is clipped to the approximate blue outline and transparent everywhere else. The actual game environment, lighting, 3D geometry and scene resources remain unchanged. The app **does not inject into the game, modify its files, or bypass anti-cheat**. Some games disallow third-party overlays or do not render them above exclusive fullscreen; verify your server's rules.
 
-## Running from Python
-Install Python 3.11+ and run:
+## Quick start (Windows 10/11)
+
+1. Download `CD-Background-Studio.exe` from [Releases](https://github.com/samimustafaa/background-changer-cd/releases).
+2. Start Creative Destruction in **windowed or borderless** mode (not exclusive fullscreen).
+3. Open CD Background Studio, click **Choose wallpaper**, select a PNG/JPG/WEBP/BMP (4K supported).
+4. Leave **Game EXE** as `client.exe` unless your actual game EXE has a different name.
+5. Click **APPLY TO LOBBY (LIVE)**, then switch to the game window.
+6. The wallpaper appears clipped to the marked **background area** when the game is focused; it hides when you alt-tab away.
+7. Click **REMOVE LIVE BACKGROUND** to turn it off. You can import a lobby screenshot and use the Keep Original / Show Wallpaper brushes to refine the transparent protection mask; press Apply again after editing.
+
+**Lobby-only safeguard:** enabled by default; checks that the yellow **Start** button is visible near the bottom-right of the lobby. When you start a match or leave the lobby, the overlay hides. If your lobby uses a different UI and it doesn't activate, turn off **Auto-hide outside lobby**. With this toggle off you must remove the overlay manually before gameplay.
+
+**How the blue selection works:** the overlay uses a normalized, approximate trace of the user's blue-marked region from the provided screenshot. It preserves the live character/UI by leaving those pixels *completely transparent* so the game shows through. Different skins, poses, resolutions or a different lobby design may require mask adjustments.
+
+**Limitations:** 16:9 composition only; supports borderless/windowed on Windows. You should test in your own environment; this release's live overlay was not verified against a running Creative Destruction client. It may not appear in exclusive fullscreen or when games block overlays. Automatic lobby detection is a heuristic.
+
+## Extras
+
+- Preview what parts of the screenshot would receive the background image.
+- Offline export: `wallpaper_4k.png` (3840×2160), `lobby_preview.png`, `protection_mask.png`, and `pack_info.json`.
+- Manual check for newer GitHub releases (no silent updater).
+
+## Python installation
 
 ```powershell
-python -m pip install -r requirements.txt
-python cd_background_studio.py
+py -3.12 -m pip install -r requirements.txt
+py -3.12 cd_background_studio.py
 ```
 
-## Windows executable
-Download the `CD-Background-Studio.exe` attached to [Releases](https://github.com/samimustafaa/background-changer-cd/releases), once the build succeeds.
-
-Build locally (Windows):
+## Build the Windows .exe
 
 ```powershell
-python -m pip install -r requirements.txt pyinstaller
-pyinstaller --noconfirm --clean --onefile --windowed --name CD-Background-Studio cd_background_studio.py
+py -3.12 -m pip install -r requirements.txt pyinstaller pytest
+py -3.12 -m pytest -q
+py -3.12 -m PyInstaller --noconfirm --clean --onefile --windowed --name CD-Background-Studio cd_background_studio.py
 ```
 
-## What's needed for real in-game integration?
-1. Official confirmation that **lobby background asset replacement** is supported (a permission to mod does not guarantee anti-cheat compatibility).
-2. The **unmodified source assets** for the game's lobby background (or official modding interface and instructions) and a list of specifically editable asset paths.
-3. The Creative Destruction client build/version and offline installation folder.
+The GitHub Actions workflow builds and attaches the executable to the tagged release.
 
-Once a supported offline method is verified, **Apply while game is closed**, **Backup**, and **Restore** workflows can be added. This project will not bypass security systems or write to running game memory.
+## True background asset replacement (future)
 
-## Notes
-The starter mask is a rough fit for the supplied lobby screenshot, not automatic pixel-perfect segmentation. Manually refine the character, weapon, UI and platform.
-Large 4K PNGs take memory and disk space.
-This is an independent fan utility and is not affiliated with Creative Destruction.
+A genuine **in-engine** change behind the animated player, rather than a screen-space approximation, requires **supported lobby asset replacement tools/documentation** from the game/server owner. Please provide the permitted lobby image/texture files or documented mod interface and the client version. An owner's permission does not automatically mean an anti-cheat exemption. We won't add bypasses.
+
+This fan-made utility is not affiliated with Creative Destruction.
