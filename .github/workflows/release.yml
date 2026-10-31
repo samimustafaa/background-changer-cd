@@ -1,0 +1,39 @@
+name: Build Windows EXE and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+      - name: Unit tests
+        run: python -m pytest -q
+      - name: Build portable EXE
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name CD-Background-Studio cd_background_studio.py
+      - name: Attach executable to v0.1.0 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            gh release upload v0.1.0 dist/CD-Background-Studio.exe --clobber
+          else
+            gh release create v0.1.0 dist/CD-Background-Studio.exe \
+              --target "${GITHUB_SHA}" \
+              --title 'CD Background Studio v0.1.0 — Offline Wallpaper Editor' \
+              --notes 'Import 4K wallpapers, protect UI/player/platform in a screenshot, preview and export images. This version does NOT alter or bypass Creative Destruction. In-game integration requires approved asset support.'
+          fi
