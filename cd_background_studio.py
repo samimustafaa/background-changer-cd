@@ -1,6 +1,7 @@
-"""CD Background Studio: offline 4K wallpaper editor; no game file changes."""
+"""CD Background Studio: optional Win32 live lobby overlay; no game-file changes."""
 from __future__ import annotations
 import json
+import os
 import threading
 import urllib.request
 import webbrowser
@@ -9,15 +10,19 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 from compositor import load_image, cover, default_preserve_mask, composite, paint_mask
+from lobby_regions import live_wallpaper_mask
+from live_overlay import request_dpi_awareness, LiveLobbyOverlay
 
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 RELEASES = 'https://github.com/samimustafaa/background-changer-cd/releases/latest'
 DARK, PANEL, BTN, WHITE, MUTED, GOLD = '#101216', '#1d2129', '#303640', '#f4f6f9', '#a4adbb', '#e5a451'
 
 class Studio:
     def __init__(self):
+        request_dpi_awareness()
         self.root = tk.Tk()
         self.root.title('CD Background Studio | v' + VERSION)
+        self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.root.configure(bg=DARK)
         self.root.geometry('1190x740')
         self.root.minsize(900, 620)
@@ -28,6 +33,10 @@ class Studio:
         self.history = []
         self.radius = 28
         self.preserve = True
+        self.live = None
+        self.game_exe = tk.StringVar(value='client.exe')
+        self.lobby_guard = tk.BooleanVar(value=True)
+        self.live_status = tk.StringVar(value='Live overlay: OFF')
         self.status = tk.StringVar(value='Import a wallpaper to begin. Nothing is changed in the game.')
         self._build()
 
@@ -50,7 +59,7 @@ class Studio:
         top.pack(fill='x', padx=22, pady=16)
         tk.Label(top, text='CD / BACKGROUND STUDIO', bg=DARK, fg=GOLD,
                  font=('Segoe UI', 18, 'bold')).pack(side='left')
-        tk.Label(top, text='    v0.1.0  ·  OFFLINE PREVIEW', bg=DARK, fg=MUTED,
+        tk.Label(top, text='    v0.2.0  ·  LIVE LOBBY OVERLAY', bg=DARK, fg=MUTED,
                  font=('Segoe UI', 9)).pack(side='left')
         tk.Button(top, text='Check updates ↗', command=self.check_updates, bg=BTN,
                   fg=WHITE, relief='flat', bd=0, cursor='hand2', padx=12, pady=8).pack(side='right')
@@ -87,8 +96,26 @@ class Studio:
         self.button(side, '＋ Choose wallpaper', self.choose_wallpaper, bright=True)
         self.wall_label = self.label(side, 'PNG / JPG / WEBP • up to 4K+', color=MUTED)
         self.button(side, '▣ Choose lobby screenshot', self.choose_screenshot)
-        self.shot_label = self.label(side, 'Optional: keep UI / player / platform', color=MUTED)
-        self.label(side, '02   PRESERVE THE FOREGROUND', ('Segoe UI', 12, 'bold'))
+        self.shot_label = self.label(side, 'Optional: refine player/UI protection', color=MUTED)
+        self.label(side, '02   APPLY TO GAME LOBBY', ('Segoe UI', 12, 'bold'))
+        self.label(side, 'Game EXE (default: client.exe)', color=MUTED)
+        tk.Entry(side, textvariable=self.game_exe, bg=BTN, fg=WHITE,
+                 insertbackground=WHITE, relief='flat', font=('Segoe UI', 10)).pack(fill='x', ipady=6)
+        tk.Checkbutton(side, text='Auto-hide outside lobby (Start button check)',
+                       variable=self.lobby_guard, bg=PANEL, fg=WHITE,
+                       selectcolor=BTN, activebackground=PANEL,
+                       activeforeground=WHITE, wraplength=245, justify='left',
+                       font=('Segoe UI', 9)).pack(anchor='w', pady=5)
+        self.button(side, '▶ APPLY TO LOBBY (LIVE)', self.apply_to_lobby, bright=True)
+        self.button(side, '✕ REMOVE LIVE BACKGROUND', self.remove_live)
+        self.label(side, 'Click Apply, then switch to the game. Borderless/windowed only.',
+                   ('Segoe UI', 9), MUTED, wraplength=255, justify='left')
+        self.label(side, 'Uses a click-through overlay, not game asset replacement.',
+                   ('Segoe UI', 9), MUTED, wraplength=255, justify='left')
+        tk.Label(side, textvariable=self.live_status, bg=PANEL, fg=GOLD,
+                 wraplength=245, justify='left', anchor='w',
+                 font=('Segoe UI', 9, 'bold')).pack(fill='x', pady=5)
+        self.label(side, '03   REFINE THE PROTECTION MASK', ('Segoe UI', 12, 'bold'))
         self.label(side, 'Paint over the player and widgets to keep those pixels.',
                    ('Segoe UI', 9), MUTED, wraplength=255, justify='left')
         self.button(side, 'Apply starter protection mask', self.apply_mask)
@@ -102,10 +129,10 @@ class Studio:
         scale.pack(fill='x')
         self.button(side, 'Undo last brush stroke', self.undo)
         self.button(side, 'Clear protection mask', self.clear_mask)
-        self.label(side, '03   EXPORT', ('Segoe UI', 12, 'bold'))
+        self.label(side, '04   OPTIONAL EXPORT', ('Segoe UI', 12, 'bold'))
         self.button(side, '↓ Export 4K asset pack', self.export_pack, bright=True)
         self.button(side, 'Save lobby preview PNG', self.export_preview)
-        self.label(side, 'Offline output only. No game files or anti-cheat modifications.',
+        self.label(side, 'Live mode adds a screen overlay; no game files or anti-cheat modifications.',
                    ('Segoe UI', 9), MUTED, wraplength=255, justify='left')
         tk.Label(self.root, textvariable=self.status, bg=DARK, fg=MUTED,
                  anchor='w', font=('Segoe UI', 9)).pack(fill='x', padx=24, pady=12)
@@ -202,7 +229,7 @@ class Studio:
             self.canvas.create_text(w//2, h//2, text='IMPORT A 4K WALLPAPER TO START',
                                     font=('Segoe UI', 14, 'bold'), fill=MUTED)
             return
-        result = composite(self.wallpaper, self.screenshot, self.mask)
+        result = self.make_preview()
         scale = min((w-20)/result.width, (h-20)/result.height)
         pw, ph = max(1, int(result.width*scale)), max(1, int(result.height*scale))
         self.preview_image = ImageTk.PhotoImage(result.resize((pw, ph), Image.Resampling.LANCZOS))
@@ -220,7 +247,7 @@ class Studio:
             p = Path(folder)
             cover(self.wallpaper, (3840, 2160)).save(p/'wallpaper_4k.png')
             if self.screenshot is not None:
-                composite(self.wallpaper, self.screenshot, self.mask).save(p/'lobby_preview.png')
+                self.make_preview().save(p/'lobby_preview.png')
                 self.mask.save(p/'protection_mask.png')
             (p/'pack_info.json').write_text(json.dumps({'version': VERSION,
                 'game_installed': False, 'note': 'Offline preview only. No game files altered.'}, indent=2), encoding='utf-8')
@@ -235,10 +262,41 @@ class Studio:
         path = filedialog.asksaveasfilename(defaultextension='.png', filetypes=[('PNG', '*.png')])
         if path:
             try:
-                composite(self.wallpaper, self.screenshot, self.mask).save(path)
+                self.make_preview().save(path)
                 self.status.set(f'Preview saved to {path}')
             except Exception as exc:
                 messagebox.showerror('Save failed', str(exc))
+
+    def make_preview(self):
+        if self.screenshot is None:
+            return self.wallpaper.convert('RGB').copy()
+        region = live_wallpaper_mask(self.screenshot.size, self.mask)
+        image = cover(self.wallpaper, self.screenshot.size)
+        return Image.composite(image, self.screenshot, region)
+
+    def apply_to_lobby(self):
+        if self.wallpaper is None:
+            return messagebox.showinfo('Select a wallpaper', 'Upload your wallpaper first.')
+        if os.name != 'nt':
+            return messagebox.showinfo('Windows required', 'Live overlay works on Windows only.')
+        try:
+            if self.live is None:
+                self.live = LiveLobbyOverlay(self.root, self.live_status.set)
+            self.live.arm(self.wallpaper, self.mask, self.game_exe.get(),
+                          self.lobby_guard.get())
+            self.status.set('Apply armed. Switch to the Creative Destruction lobby.')
+        except Exception as exc:
+            messagebox.showerror('Could not start live overlay', str(exc))
+
+    def remove_live(self):
+        if self.live is not None:
+            self.live.remove()
+        self.status.set('Live lobby wallpaper removed.')
+
+    def close(self):
+        if self.live is not None:
+            self.live.close()
+        self.root.destroy()
 
     def check_updates(self):
         self.status.set('Checking GitHub Releases…')
